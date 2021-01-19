@@ -1,0 +1,9 @@
+{
+  "name": "url2data Go",
+  "description": "get data from url",
+  "keywords": [
+    "go"
+  ],
+  "website": "http://github.com/and07/url2data",
+  "repository": "http://github.com/and07/url2data"
+}
