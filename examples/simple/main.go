@@ -11,6 +11,6 @@ func main() {
 	ctx, cancel := parser.New(context.Background())
 	defer cancel()
 
-	res := parser.Run(ctx, ruleData)
+	res := parser.Run(ctx, ruleData1)
 	parser.ExportCSV(res)
 }

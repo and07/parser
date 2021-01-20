@@ -35,6 +35,20 @@ type Parser struct {
 	PathType int     `json:"path_type"`
 }
 
+type fass struct {
+	rule Parser
+	res  [][]string
+}
+
+// New ...
+func New(ctx context.Context) (context.Context, context.CancelFunc) {
+	// create chrome instance
+	return chromedp.NewContext(
+		ctx,
+		chromedp.WithLogf(log.Printf),
+	)
+}
+
 func rules(rule string) Parser {
 	var r Parser
 	if err := json.Unmarshal([]byte(rule), &r); err != nil {
@@ -65,17 +79,32 @@ func export(data [][]string) {
 
 }
 
+func keys(data map[string]map[string]interface{}) []string {
+	var keys []string
+	for key := range data {
+		for k := range data[key] {
+			keys = append(keys, k)
+		}
+		break
+	}
+	return keys
+}
+
 func normalize(data map[string]map[string]interface{}) [][]string {
 	var f [][]string
-
+	keys := keys(data)
 	for key := range data {
 		var line []string
-		for k, v := range data[key] {
+		for i := range keys {
+			v := data[key][keys[i]]
 			switch v.(type) {
 			case *string:
-				line = append(line, *(v.(*string)))
+				htmlString := removeTabs(*(v.(*string)))
+				htmlString = removeTagLansana(htmlString, "script")
+				htmlString = removeTagLansana(htmlString, "style")
+				line = append(line, htmlString)
 			case *[]*cdp.Node:
-				log.Printf("%s %T %#v", k, v, *(v.(*[]*cdp.Node)))
+				log.Printf("%s %T %#v", keys[i], v, *(v.(*[]*cdp.Node)))
 			}
 		}
 		f = append(f, line)
@@ -84,7 +113,7 @@ func normalize(data map[string]map[string]interface{}) [][]string {
 }
 
 // Run ...
-func Run(ctx context.Context, ruleData string) {
+func Run(ctx context.Context, ruleData string) [][]string {
 	rule := rules(ruleData)
 
 	data := make(map[string]map[string]interface{})
@@ -93,7 +122,11 @@ func Run(ctx context.Context, ruleData string) {
 	res := normalize(data)
 	//log.Printf("data %#v", data)
 
-	log.Printf("res %d", len(res))
+	return res
+}
+
+// ExportCSV ...
+func ExportCSV(res [][]string) {
 	export(res)
 }
 
@@ -137,22 +170,6 @@ func tasksData(rule *Rule, content map[string]interface{}) chromedp.QueryAction 
 		return chromedp.OuterHTML(rule.Path, content[rule.Name].(*string))
 	}
 	return nil
-}
-
-func extractData(ctx context.Context, url string, rule []*Rule, data map[string]map[string]interface{}) {
-	if len(rule) <= 0 {
-		return
-	}
-	if _, ok := data[url]; !ok {
-		data[url] = make(map[string]interface{})
-	}
-	tasksData := tasks(rule, data[url])
-	log.Printf("%#v", tasksData)
-
-	err := chromedp.Run(ctx, tasksData)
-	if err != nil {
-		log.Fatal(err)
-	}
 }
 
 func content(ctx context.Context, url string, rule []*Rule, data map[string]map[string]interface{}) {

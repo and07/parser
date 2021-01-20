@@ -19,7 +19,7 @@ test: deps
 .PHONY: .fast-build
 fast-build: deps
 	$(info #Building...)
-	$(BUILD_ENVPARMS) $(VGO_EXEC) build -ldflags "$(LDFLAGS)" -o $(BIN) ./*.go
+	$(BUILD_ENVPARMS) $(VGO_EXEC) build -ldflags "$(LDFLAGS)" -o $(BIN) ./cmd/${APP}
 
 .PHONY: .build
 build: test fast-build
