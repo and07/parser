@@ -4,11 +4,19 @@ import (
 	"context"
 
 	"github.com/and07/parser/pkg/parser"
+	"github.com/chromedp/chromedp"
 )
 
 func main() {
 
-	ctx, cancel := parser.New(context.Background())
+	// 禁用chrome headless
+	opts := append(chromedp.DefaultExecAllocatorOptions[:],
+		chromedp.Flag("headless", false),
+	)
+	allocCtx, cancel := chromedp.NewExecAllocator(context.Background(), opts...)
+	defer cancel()
+
+	ctx, cancel := parser.New(allocCtx)
 	defer cancel()
 
 	res := parser.Run(ctx, ruleData)
