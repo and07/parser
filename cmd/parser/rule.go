@@ -28,7 +28,15 @@ var ruleData string = `
 				"parent":"link",
 				"page":"https://brainberries.co/interesting/8-amazing-celebs-with-their-own-businesses/",
 				"path":"//*/div[@class='entry-content']"
-			 }
+			 },
+			 {
+				"type": "attr",
+				"name": "img1",
+				"attr": "src",
+				"parent": "link",
+				"page": "https://brainberries.co/interesting/8-amazing-celebs-with-their-own-businesses/",
+				"path": "//*/figure[@class='wp-block-image size-large'][1]/img"
+			  }
 		  ]
 	   }
 	],

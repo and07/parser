@@ -93,6 +93,12 @@ func keys(data map[string]map[string]interface{}) []string {
 func normalize(data map[string]map[string]interface{}) [][]string {
 	var f [][]string
 	keys := keys(data)
+	var headline []string
+	for i := range keys {
+		headline = append(headline, keys[i])
+	}
+	f = append(f, headline)
+
 	for key := range data {
 		var line []string
 		for i := range keys {
@@ -117,7 +123,9 @@ func Run(ctx context.Context, ruleData string) [][]string {
 	rule := rules(ruleData)
 
 	data := make(map[string]map[string]interface{})
-	content(ctx, rule.URL, rule.Rule, data)
+	if err := content(ctx, rule.URL, rule.Rule, data); err != nil {
+		log.Println(err)
+	}
 
 	res := normalize(data)
 	//log.Printf("data %#v", data)
@@ -172,14 +180,14 @@ func tasksData(rule *Rule, content map[string]interface{}) chromedp.QueryAction 
 	return nil
 }
 
-func content(ctx context.Context, url string, rule []*Rule, data map[string]map[string]interface{}) {
+func content(ctx context.Context, url string, rule []*Rule, data map[string]map[string]interface{}) error {
 
 	if len(rule) <= 0 {
-		return
+		return nil
 	}
 
 	if err := runTasks(ctx, url); err != nil {
-		log.Fatal(err)
+		return err
 	}
 	if _, ok := data[url]; !ok {
 		data[url] = make(map[string]interface{})
@@ -189,17 +197,20 @@ func content(ctx context.Context, url string, rule []*Rule, data map[string]map[
 
 	err := chromedp.Run(ctx, tasksData)
 	if err != nil {
-		log.Fatal(err)
+		return err
 	}
 	if _, ok := data[url]["link"]; ok {
-		log.Printf("%#v", data[url]["link"].(*[]*cdp.Node))
+		defer log.Printf("%#v", data[url]["link"].(*[]*cdp.Node))
 		if len(rule[0].Children) > 0 {
 			for _, node := range *(data[url]["link"].(*[]*cdp.Node)) {
-				content(ctx, node.AttributeValue("href"), rule[0].Children, data)
-			}
+				url := node.AttributeValue("href")
+				if err := content(ctx, url, rule[0].Children, data); err != nil {
+					log.Println(err)
+				}
 
+			}
 		}
 	}
 
-	return
+	return nil
 }
