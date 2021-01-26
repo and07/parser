@@ -12,5 +12,5 @@ func main() {
 	defer cancel()
 
 	res := parser.Run(ctx, ruleData1)
-	parser.ExportCSV(res)
+	parser.ExportCSV(res, "./result.csv")
 }

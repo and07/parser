@@ -63,9 +63,9 @@ func checkError(message string, err error) {
 	}
 }
 
-func export(data [][]string) {
+func export(data [][]string, path string) {
 
-	file, err := os.Create("./result.csv")
+	file, err := os.Create(path)
 	checkError("Cannot create file", err)
 	defer file.Close()
 
@@ -134,8 +134,8 @@ func Run(ctx context.Context, ruleData string) [][]string {
 }
 
 // ExportCSV ...
-func ExportCSV(res [][]string) {
-	export(res)
+func ExportCSV(res [][]string, path string) {
+	export(res, path)
 }
 
 func runTasks(ctx context.Context, url string) error {

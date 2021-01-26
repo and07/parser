@@ -11,7 +11,7 @@ func main() {
 
 	// 禁用chrome headless
 	opts := append(chromedp.DefaultExecAllocatorOptions[:],
-		chromedp.Flag("headless", false),
+		chromedp.Flag("headless", true),
 	)
 	allocCtx, cancel := chromedp.NewExecAllocator(context.Background(), opts...)
 	defer cancel()
@@ -20,5 +20,5 @@ func main() {
 	defer cancel()
 
 	res := parser.Run(ctx, ruleData)
-	parser.ExportCSV(res)
+	parser.ExportCSV(res, "./result.csv")
 }
