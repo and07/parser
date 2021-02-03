@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/csv"
 	"encoding/json"
+	"io"
+	"io/ioutil"
 	"log"
 	"os"
 	"time"
@@ -57,25 +59,16 @@ func rules(rule string) Parser {
 	return r
 }
 
-func checkError(message string, err error) {
-	if err != nil {
-		log.Fatal(message, err)
-	}
-}
-
-func export(data [][]string, path string) {
+func export(ctx context.Context, path string) error {
 
 	file, err := os.Create(path)
-	checkError("Cannot create file", err)
+	if err != nil {
+		return err
+	}
+
 	defer file.Close()
 
-	writer := csv.NewWriter(file)
-	defer writer.Flush()
-
-	for _, value := range data {
-		err := writer.Write(value)
-		checkError("Cannot write to file", err)
-	}
+	return Output(ctx, file)
 
 }
 
@@ -119,23 +112,59 @@ func normalize(data map[string]map[string]interface{}) [][]string {
 }
 
 // Run ...
-func Run(ctx context.Context, ruleData string) [][]string {
-	rule := rules(ruleData)
+func Run(ctx context.Context) (context.Context, error) {
+
+	rule := rules(ctx.Value("rule").(string))
 
 	data := make(map[string]map[string]interface{})
 	if err := content(ctx, rule.URL, rule.Rule, data); err != nil {
-		log.Println(err)
+		return ctx, err
 	}
 
 	res := normalize(data)
+	ctx = context.WithValue(ctx, "res", res)
 	//log.Printf("data %#v", data)
 
-	return res
+	return ctx, nil
+}
+
+// Conf ...
+func Conf(ctx context.Context, r io.Reader) (context.Context, error) {
+
+	byteValue, _ := ioutil.ReadAll(r)
+	ctx = context.WithValue(ctx, "rule", string(byteValue))
+	return ctx, nil
+}
+
+// RuleConfig ...
+func RuleConfig(ctx context.Context, fileName string) (context.Context, error) {
+	file, e := getFile(fileName)
+	if e != nil {
+		return ctx, e
+	}
+	defer file.Close()
+
+	return Conf(ctx, file)
 }
 
 // ExportCSV ...
-func ExportCSV(res [][]string, path string) {
-	export(res, path)
+func ExportCSV(ctx context.Context, path string) error {
+	return export(ctx, path)
+}
+
+// Output ...
+func Output(ctx context.Context, w io.Writer) error {
+	res := ctx.Value("res").([][]string)
+	writer := csv.NewWriter(w)
+	defer writer.Flush()
+
+	for _, value := range res {
+		err := writer.Write(value)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func runTasks(ctx context.Context, url string) error {

@@ -1,6 +1,3 @@
-package main
-
-var ruleData string = `
 {
 	"url":"https://brainberries.co/",
 	"all":false,
@@ -45,5 +42,4 @@ var ruleData string = `
 	"domen":"https://brainberries.co",
 	"limit":"1",
 	"path_type":0
- }
-`
+}

@@ -3,7 +3,23 @@
 This is a basic parser
 
 
-## use
+## use WINDOWS
+``` sh
+./bin/parser -r=$(pwd)\\cmd\\parser\\rule.json -c=$HOME\\parser.csv
+
+./bin/parser -r=$(pwd)\\cmd\\parser\\rule.json > out.csv
+
+cat $(pwd)\\cmd\\parser\\rule.json | ./bin/parser > $HOME\\test.csv
+```
+
+## use MAC
+``` sh
+./bin/parser -r=$(pwd)/cmd/parser/rule.json -c=$HOME/parser.csv
+
+./bin/parser -r=$(pwd)/cmd/parser/rule.json > out.csv
+
+cat $(pwd)/cmd/parser/rule.json | ./bin/parser > $HOME/test.csv
+```
 
 ``` go
 
