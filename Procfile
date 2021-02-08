@@ -1,1 +1,1 @@
-web: url2data
+web: parser
