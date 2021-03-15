@@ -33,6 +33,14 @@
 				"parent": "link",
 				"page": "https://brainberries.co/interesting/8-amazing-celebs-with-their-own-businesses/",
 				"path": "(//*/figure[1]/img)[1]"
+			  },
+			  {
+				"type": "text",
+				"name": "cat",
+				"attr": null,
+				"parent": "link",
+				"page": "https://brainberries.co/interesting/8-amazing-celebs-with-their-own-businesses/",
+				"path": "//*/div[@class='cat-links']"
 			  }
 		  ]
 	   }
