@@ -1,5 +1,5 @@
 {
-	"url":"https://brainberries.co/",
+	"url":"https://brainberries.co/page/%d/",
 	"all":false,
 	"rule":[
 	   {
@@ -48,6 +48,6 @@
 	"host":"brainberries.co",
 	"name":"",
 	"domen":"https://brainberries.co",
-	"limit":"1",
+	"limit":5,
 	"path_type":0
 }

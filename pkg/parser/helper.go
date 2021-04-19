@@ -2,11 +2,19 @@ package parser
 
 import (
 	"bytes"
+	"context"
+	"encoding/csv"
+	"encoding/json"
+	"io"
+	"io/ioutil"
 	"log"
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
+	"github.com/chromedp/cdproto/cdp"
+	"github.com/chromedp/chromedp"
 	"github.com/pkg/errors"
 	"golang.org/x/net/html"
 )
@@ -88,4 +96,214 @@ func getFile(filePath string) (*os.File, error) {
 		return nil, errors.Wrapf(e, "unable to read the file %s", filePath)
 	}
 	return file, nil
+}
+
+func head(rule []*Rule, headline *[]string) {
+	if len(rule) == 0 {
+		return
+	}
+	h := make([]string, 0)
+	for _, r := range rule {
+		h = append(h, r.Name)
+		if len(r.Children) > 0 {
+			head(r.Children, &h)
+		}
+	}
+
+	*headline = append(*headline, h...)
+
+}
+
+// Conf ...
+func Conf(ctx context.Context, r io.Reader) (context.Context, error) {
+
+	ctx = context.WithValue(ctx, "rule", readConfig(r))
+	return ctx, nil
+}
+
+func readConfigFromFile(fileName string) ([]byte, error) {
+	file, e := getFile(fileName)
+	if e != nil {
+		return nil, e
+	}
+	defer file.Close()
+
+	return readConfig(file), nil
+}
+
+func readConfig(r io.Reader) []byte {
+	byteValue, _ := ioutil.ReadAll(r)
+	return byteValue
+}
+
+// RuleConfig ...
+func RuleConfig(ctx context.Context, fileName string) (context.Context, error) {
+	file, e := getFile(fileName)
+	if e != nil {
+		return ctx, e
+	}
+	defer file.Close()
+
+	return Conf(ctx, file)
+}
+
+// ExportCSV ...
+func ExportCSV(ctx context.Context, path string) error {
+	return export(ctx, path)
+}
+
+// Output ...
+func Output(ctx context.Context, w io.Writer) error {
+	res := ctx.Value("res").([][]string)
+
+	return write(res, w)
+}
+
+func write(res [][]string, w io.Writer) error {
+	writer := csv.NewWriter(w)
+	defer writer.Flush()
+
+	for _, value := range res {
+		err := writer.Write(value)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func runTasks(ctx context.Context, url string) error {
+	return chromedp.Run(ctx,
+		chromedp.Tasks{
+			chromedp.Navigate(url),
+			chromedp.Sleep(2 * time.Second),
+		},
+	)
+}
+
+func tasks(rules []*Rule, data map[string]interface{}) chromedp.Tasks {
+	var tasks chromedp.Tasks
+
+	for _, r := range rules {
+
+		if r.Type == "link" {
+			var nodes []*cdp.Node
+			data[r.Name] = &nodes
+		} else {
+			var x string
+			data[r.Name] = &x
+		}
+
+		tasks = append(tasks, tasksData(r, data))
+	}
+	return tasks
+}
+
+func tasksData(rule *Rule, content map[string]interface{}) chromedp.QueryAction {
+	var ok bool
+	switch rule.Type {
+	case "text":
+		return chromedp.TextContent(rule.Path, content[rule.Name].(*string))
+	case "attr":
+		return chromedp.AttributeValue(rule.Path, rule.Attr, content[rule.Name].(*string), &ok)
+	case "link":
+		return chromedp.Nodes(rule.Path, content[rule.Name].(*[]*cdp.Node))
+	case "html":
+		return chromedp.OuterHTML(rule.Path, content[rule.Name].(*string))
+	}
+	return nil
+}
+
+func content(ctx context.Context, url string, rule []*Rule, data map[string]map[string]interface{}) error {
+
+	if len(rule) <= 0 {
+		return nil
+	}
+
+	if err := runTasks(ctx, url); err != nil {
+		return err
+	}
+	if _, ok := data[url]; !ok {
+		data[url] = make(map[string]interface{})
+	}
+	tasksData := tasks(rule, data[url])
+	log.Printf("%#v", tasksData)
+
+	err := chromedp.Run(ctx, tasksData)
+	if err != nil {
+		return err
+	}
+	if _, ok := data[url]["link"]; ok {
+		defer log.Printf("%#v", data[url]["link"].(*[]*cdp.Node))
+		if len(rule[0].Children) > 0 {
+			for _, node := range *(data[url]["link"].(*[]*cdp.Node)) {
+				url := node.AttributeValue("href")
+				if err := content(ctx, url, rule[0].Children, data); err != nil {
+					log.Println(err)
+				}
+
+			}
+		}
+	}
+
+	return nil
+}
+
+func rules(rule []byte) Parser {
+	var r Parser
+	if err := json.Unmarshal(rule, &r); err != nil {
+		log.Fatal(err)
+	}
+	return r
+}
+
+func fileWriter(path string) (*os.File, error) {
+	return os.Create(path)
+}
+
+func export(ctx context.Context, path string) error {
+
+	file, err := fileWriter(path)
+	if err != nil {
+		return err
+	}
+
+	defer file.Close()
+
+	return Output(ctx, file)
+
+}
+
+func normalize(headsline []string, data map[string]map[string]interface{}) [][]string {
+	var f [][]string
+	var headline []string
+	for i := range headsline {
+		if headsline[i] == "link" {
+			continue
+		}
+		for key := range data {
+			if _, ok := data[key][headsline[i]]; !ok {
+				headline = append(headline, headsline[i])
+			}
+		}
+	}
+	f = append(f, headline)
+
+	for key := range data {
+		var line []string
+		for i := range headline {
+			v := data[key][headline[i]]
+			switch v.(type) {
+			case *string:
+				htmlString := removeTabs(*(v.(*string)))
+				htmlString = removeTagLansana(htmlString, "script")
+				htmlString = removeTagLansana(htmlString, "style")
+				line = append(line, htmlString)
+			case *[]*cdp.Node:
+				log.Printf("%s %T %#v", headline[i], v, *(v.(*[]*cdp.Node)))
+			}
+		}
+		f = append(f, line)
+	}
+	return f
 }

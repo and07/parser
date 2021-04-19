@@ -2,17 +2,38 @@ package parser
 
 import (
 	"context"
-	"encoding/csv"
-	"encoding/json"
+	"fmt"
 	"io"
-	"io/ioutil"
 	"log"
 	"os"
-	"time"
 
-	"github.com/chromedp/cdproto/cdp"
 	"github.com/chromedp/chromedp"
 )
+
+type Logger interface {
+	// all levels + Prin
+	Print(v ...interface{})
+	Printf(format string, v ...interface{})
+	Println(v ...interface{})
+	Debug(v ...interface{})
+	Debugf(format string, v ...interface{})
+	Debugln(v ...interface{})
+	Info(v ...interface{})
+	Infof(format string, v ...interface{})
+	Infoln(v ...interface{})
+	Warn(v ...interface{})
+	Warnf(format string, v ...interface{})
+	Warnln(v ...interface{})
+	Error(v ...interface{})
+	Errorf(format string, v ...interface{})
+	Errorln(v ...interface{})
+	Fatal(v ...interface{})
+	Fatalf(format string, v ...interface{})
+	Fatalln(v ...interface{})
+	Panic(v ...interface{})
+	Panicf(format string, v ...interface{})
+	Panicln(v ...interface{})
+}
 
 // Rule ...
 type Rule struct {
@@ -33,17 +54,90 @@ type Parser struct {
 	Host     string  `json:"host"`
 	Name     string  `json:"name"`
 	Domen    string  `json:"domen"`
-	Limit    string  `json:"limit"`
+	Limit    int     `json:"limit"`
 	PathType int     `json:"path_type"`
 }
 
-type fass struct {
-	rule Parser
-	res  [][]string
+// Crawler ...
+type Crawler struct {
+	parser Parser
+	res    chan [][]string
+	logger Logger
+	w      io.Writer
+}
+
+type contextKey struct{}
+
+func isInputFromPipe() bool {
+	fileInfo, _ := os.Stdin.Stat()
+	return fileInfo.Mode()&os.ModeCharDevice == 0
+}
+
+// CrawlerOption is a context option.
+type CrawlerOption = func(*Crawler)
+
+// WithLogger ...
+func WithLogger(log Logger) CrawlerOption {
+	return func(c *Crawler) { c.logger = log }
+}
+
+// WithConfigs ...
+func WithConfigs(rulePath string) CrawlerOption {
+	return func(c *Crawler) {
+		var conf []byte
+		var err error
+		if isInputFromPipe() {
+			conf = readConfig(os.Stdin)
+		} else {
+			if conf, err = readConfigFromFile(rulePath); err != nil {
+				panic(err)
+			}
+		}
+
+		c.parser = rules(conf)
+	}
+}
+
+// WithWriter ...
+func WithWriter(outPath string) CrawlerOption {
+	return func(c *Crawler) {
+		var writer io.Writer
+		if outPath != "" {
+			writer, _ = fileWriter(outPath)
+		} else {
+			writer = os.Stdout
+		}
+		c.w = writer
+	}
 }
 
 // New ...
-func New(ctx context.Context) (context.Context, context.CancelFunc) {
+func New(ctx context.Context, opts ...CrawlerOption) (context.Context, context.CancelFunc) {
+
+	c := &Crawler{
+		res: make(chan [][]string, 10),
+	}
+
+	for _, o := range opts {
+		o(c)
+	}
+
+	for i := 0; i < 15; i++ {
+		if c.logger != nil {
+			c.logger.Debugf("----worker req %d----", i)
+		}
+
+		go func(cnt int) {
+			for req := range c.res {
+				if err := c.write(req); err != nil {
+					if c.logger != nil {
+						c.logger.Errorln(err.Error())
+					}
+				}
+			}
+		}(i)
+	}
+	ctx = context.WithValue(ctx, contextKey{}, c)
 	// create chrome instance
 	return chromedp.NewContext(
 		ctx,
@@ -51,195 +145,49 @@ func New(ctx context.Context) (context.Context, context.CancelFunc) {
 	)
 }
 
-func rules(rule string) Parser {
-	var r Parser
-	if err := json.Unmarshal([]byte(rule), &r); err != nil {
-		log.Fatal(err)
-	}
-	return r
-}
-
-func export(ctx context.Context, path string) error {
-
-	file, err := os.Create(path)
-	if err != nil {
-		return err
-	}
-
-	defer file.Close()
-
-	return Output(ctx, file)
-
-}
-
-func keys(data map[string]map[string]interface{}) []string {
-	var keys []string
-	for key := range data {
-		for k := range data[key] {
-			keys = append(keys, k)
-		}
-		break
-	}
-	return keys
-}
-
-func normalize(data map[string]map[string]interface{}) [][]string {
-	var f [][]string
-	keys := keys(data)
-	var headline []string
-	for i := range keys {
-		headline = append(headline, keys[i])
-	}
-	f = append(f, headline)
-
-	for key := range data {
-		var line []string
-		for i := range keys {
-			v := data[key][keys[i]]
-			switch v.(type) {
-			case *string:
-				htmlString := removeTabs(*(v.(*string)))
-				htmlString = removeTagLansana(htmlString, "script")
-				htmlString = removeTagLansana(htmlString, "style")
-				line = append(line, htmlString)
-			case *[]*cdp.Node:
-				log.Printf("%s %T %#v", keys[i], v, *(v.(*[]*cdp.Node)))
-			}
-		}
-		f = append(f, line)
-	}
-	return f
+// FromContext extracts the Context data stored inside a context.Context.
+func FromContext(ctx context.Context) *Crawler {
+	c, _ := ctx.Value(contextKey{}).(*Crawler)
+	return c
 }
 
 // Run ...
 func Run(ctx context.Context) (context.Context, error) {
 
-	rule := rules(ctx.Value("rule").(string))
+	c := FromContext(ctx)
+
+	headsline := make([]string, 0)
+	head(c.parser.Rule, &headsline)
+
+	urlBase := c.parser.URL
+
+	if c.parser.Limit > 1 {
+		for i := 1; i <= c.parser.Limit; i++ {
+			data := make(map[string]map[string]interface{})
+			url := fmt.Sprintf(urlBase, i) //TODO
+			if c.logger != nil {
+				c.logger.Printf("url: %s", url)
+			}
+			if err := content(ctx, url, c.parser.Rule, data); err != nil {
+				return ctx, err
+			}
+			c.res <- normalize(headsline, data)
+
+		}
+
+		return ctx, nil
+	}
 
 	data := make(map[string]map[string]interface{})
-	if err := content(ctx, rule.URL, rule.Rule, data); err != nil {
+	if err := content(ctx, urlBase, c.parser.Rule, data); err != nil {
 		return ctx, err
 	}
 
-	res := normalize(data)
-	ctx = context.WithValue(ctx, "res", res)
-	//log.Printf("data %#v", data)
+	c.res <- normalize(headsline, data)
 
 	return ctx, nil
 }
 
-// Conf ...
-func Conf(ctx context.Context, r io.Reader) (context.Context, error) {
-
-	byteValue, _ := ioutil.ReadAll(r)
-	ctx = context.WithValue(ctx, "rule", string(byteValue))
-	return ctx, nil
-}
-
-// RuleConfig ...
-func RuleConfig(ctx context.Context, fileName string) (context.Context, error) {
-	file, e := getFile(fileName)
-	if e != nil {
-		return ctx, e
-	}
-	defer file.Close()
-
-	return Conf(ctx, file)
-}
-
-// ExportCSV ...
-func ExportCSV(ctx context.Context, path string) error {
-	return export(ctx, path)
-}
-
-// Output ...
-func Output(ctx context.Context, w io.Writer) error {
-	res := ctx.Value("res").([][]string)
-	writer := csv.NewWriter(w)
-	defer writer.Flush()
-
-	for _, value := range res {
-		err := writer.Write(value)
-		if err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-func runTasks(ctx context.Context, url string) error {
-	return chromedp.Run(ctx,
-		chromedp.Tasks{
-			chromedp.Navigate(url),
-			chromedp.Sleep(2 * time.Second),
-		},
-	)
-}
-
-func tasks(rules []*Rule, data map[string]interface{}) chromedp.Tasks {
-	var tasks chromedp.Tasks
-
-	for _, r := range rules {
-
-		if r.Type == "link" {
-			var nodes []*cdp.Node
-			data[r.Name] = &nodes
-		} else {
-			var x string
-			data[r.Name] = &x
-		}
-
-		tasks = append(tasks, tasksData(r, data))
-	}
-	return tasks
-}
-
-func tasksData(rule *Rule, content map[string]interface{}) chromedp.QueryAction {
-	var ok bool
-	switch rule.Type {
-	case "text":
-		return chromedp.TextContent(rule.Path, content[rule.Name].(*string))
-	case "attr":
-		return chromedp.AttributeValue(rule.Path, rule.Attr, content[rule.Name].(*string), &ok)
-	case "link":
-		return chromedp.Nodes(rule.Path, content[rule.Name].(*[]*cdp.Node))
-	case "html":
-		return chromedp.OuterHTML(rule.Path, content[rule.Name].(*string))
-	}
-	return nil
-}
-
-func content(ctx context.Context, url string, rule []*Rule, data map[string]map[string]interface{}) error {
-
-	if len(rule) <= 0 {
-		return nil
-	}
-
-	if err := runTasks(ctx, url); err != nil {
-		return err
-	}
-	if _, ok := data[url]; !ok {
-		data[url] = make(map[string]interface{})
-	}
-	tasksData := tasks(rule, data[url])
-	log.Printf("%#v", tasksData)
-
-	err := chromedp.Run(ctx, tasksData)
-	if err != nil {
-		return err
-	}
-	if _, ok := data[url]["link"]; ok {
-		defer log.Printf("%#v", data[url]["link"].(*[]*cdp.Node))
-		if len(rule[0].Children) > 0 {
-			for _, node := range *(data[url]["link"].(*[]*cdp.Node)) {
-				url := node.AttributeValue("href")
-				if err := content(ctx, url, rule[0].Children, data); err != nil {
-					log.Println(err)
-				}
-
-			}
-		}
-	}
-
-	return nil
+func (c *Crawler) write(res [][]string) error {
+	return write(res, c.w)
 }

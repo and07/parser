@@ -34,8 +34,32 @@ var rule string = `
 	"host":"index.html",
 	"name":"",
 	"domen":"index.html",
-	"limit":"1",
+	"limit":1,
 	"path_type":0
+ }
+`
+
+var rule1 string = `
+{
+	"rule":[
+	   {
+		  "name":"link",
+		  "children":[
+			 {
+				"name":"title1"
+			 },
+			 {
+				"name":"test"
+			 },
+			 {
+				"name":"img1"
+			 },
+			 {
+				"name":"cat"
+			 }
+		  ]
+	   }
+	]
  }
 `
 
@@ -54,7 +78,7 @@ func TestExtractData(t *testing.T) {
 	)
 	defer cancel()
 
-	rule := rules(rule)
+	rule := rules([]byte(rule))
 
 	data := make(map[string]map[string]interface{})
 	content(ctx, testdataDir+"/"+rule.URL, rule.Rule, data)
@@ -67,4 +91,20 @@ func TestExtractData(t *testing.T) {
 		}
 	}
 
+}
+
+func TestHead(t *testing.T) {
+	rule := rules([]byte(rule))
+	heads := make([]string, 0)
+	head(rule.Rule, &heads)
+	if len(heads) != 2 {
+		t.Error(heads)
+	}
+
+	rule1 := rules([]byte(rule1))
+	heads1 := make([]string, 0)
+	head(rule1.Rule, &heads1)
+	if len(heads1) != 5 {
+		t.Error(heads1)
+	}
 }
