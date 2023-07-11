@@ -1,0 +1,56 @@
+{
+	"url":"https://www.notebookcheck-ru.com/?page=%d",
+	"all":false,
+	"rule":[
+	   {
+		  "type":"link",
+		  "name":"link",
+		  "attr":null,
+		  "parent":null,
+		  "page":"https://www.notebookcheck-ru.com/",
+		  "path":"//*/div[@class='introa_content']/a[contains(@class, 'introa_large')]",
+		  "children":[
+			 {
+				"type":"text",
+				"name":"title1",
+				"attr":null,
+				"parent":"link",
+				"page":"",
+				"path":"//*/div[@class='nbcintro']/h1"
+			 },
+			 {
+				"type":"html",
+				"name":"test",
+				"attr":null,
+				"parent":"link",
+				"page":"",
+				"path":"//*/div[contains(@class, 'ttcl_0')]"
+			 },
+			 {
+				"type": "attr",
+				"name": "img1",
+				"attr": "src",
+				"parent": "link",
+				"page": "",
+				"path": "(//*/figure[1]/a/img)[1]"
+			  },
+			  {
+				"type": "text",
+				"name": "cat",
+				"attr": null,
+				"parent": "link",
+				"page": "",
+				"path": "//*/li[@class='mainmenu selected']"
+			  }
+		  ]
+	   }
+	],
+	"host":"www.notebookcheck-ru.com",
+	"name":"",
+	"domen":"https://www.notebookcheck-ru.com/",
+	"limit":1,
+	"path_type":0
+}
+
+
+

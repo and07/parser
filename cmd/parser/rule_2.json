@@ -1,0 +1,56 @@
+{
+	"url":"https://www.fandom.com/articles/%d",
+	"all":false,
+	"rule":[
+	   {
+		  "type":"link",
+		  "name":"link",
+		  "attr":null,
+		  "parent":null,
+		  "page":"",
+		  "path":"//*/a[contains(@class, 'clickable-anchor')]",
+		  "children":[
+			 {
+				"type":"text",
+				"name":"title1",
+				"attr":null,
+				"parent":"link",
+				"page":"",
+				"path":"//*/div[contains(@class,'article-header__title')]/h1"
+			 },
+			 {
+				"type":"html",
+				"name":"test",
+				"attr":null,
+				"parent":"link",
+				"page":"",
+				"path":"//*/div[contains(@class, 'article-content entry-content')]"
+			 },
+			  {
+				"type": "text",
+				"name": "cat",
+				"attr": null,
+				"parent": "link",
+				"page": "",
+				"path": "(//*/a[contains(@class,'article-topic-tags__tag')])[1]"
+			  },
+              {
+                "type": "attr",
+                "name": "img1",
+                "attr": "src",
+                "parent": "link",
+                "page": "",
+                "path": "(//*/img[contains(@class, 'article-header__image')]) | (//*/img[contains(@class, 'article-image__image')])[1]"
+              }
+		  ]
+	   }
+	],
+	"host":"www.fandom.com",
+	"name":"",
+	"domen":"https://www.fandom.com/articles",
+	"limit":2,
+	"path_type":0
+}
+
+
+

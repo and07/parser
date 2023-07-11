@@ -173,6 +173,8 @@ func write(res [][]string, w io.Writer) error {
 }
 
 func runTasks(ctx context.Context, url string) error {
+	log.Printf("chromedp.Run url %s", url)
+
 	return chromedp.Run(ctx,
 		chromedp.Tasks{
 			chromedp.Navigate(url),
@@ -221,20 +223,40 @@ func content(ctx context.Context, url string, rule []*Rule, data map[string]map[
 	}
 
 	if err := runTasks(ctx, url); err != nil {
+		log.Printf("runTasks url %s %s", url, err)
 		return err
 	}
 	if _, ok := data[url]; !ok {
 		data[url] = make(map[string]interface{})
 	}
 	tasksData := tasks(rule, data[url])
-	log.Printf("%#v", tasksData)
+	log.Printf("tasksData url %s %#v", url, tasksData)
 
-	err := chromedp.Run(ctx, tasksData)
-	if err != nil {
-		return err
+	for _, t := range tasksData {
+		log.Println(t)
+		c, cancel := context.WithTimeout(ctx, 30*time.Second)
+		err := chromedp.Run(c, t)
+		if err != nil {
+			log.Printf("chromedp.Run err %s ", err)
+			cancel()
+			continue
+		}
+		cancel()
 	}
+
+	log.Println("-------")
+	c := FromContext(ctx)
+	if c != nil {
+		dataNormalize := normalize(c.headsline, data)
+		log.Printf("dataNormalize %#v", dataNormalize)
+		if len(dataNormalize) > 0 && len(dataNormalize[0]) > 0 {
+			c.res <- dataNormalize
+			delete(data, url)
+		}
+	}
+
 	if _, ok := data[url]["link"]; ok {
-		defer log.Printf("%#v", data[url]["link"].(*[]*cdp.Node))
+		defer log.Printf("url %#v", data[url]["link"].(*[]*cdp.Node))
 		if len(rule[0].Children) > 0 {
 			for _, node := range *(data[url]["link"].(*[]*cdp.Node)) {
 				url := node.AttributeValue("href")
@@ -274,6 +296,21 @@ func export(ctx context.Context, path string) error {
 
 }
 
+func headliner(headsline []string) [][]string {
+	var f [][]string
+	var headline []string
+	for i := range headsline {
+		if headsline[i] == "link" {
+			continue
+		}
+
+		headline = append(headline, headsline[i])
+
+	}
+	f = append(f, headline)
+	return f
+}
+
 func normalize(headsline []string, data map[string]map[string]interface{}) [][]string {
 	var f [][]string
 	var headline []string
@@ -287,7 +324,6 @@ func normalize(headsline []string, data map[string]map[string]interface{}) [][]s
 			}
 		}
 	}
-	f = append(f, headline)
 
 	for key := range data {
 		var line []string
@@ -303,7 +339,10 @@ func normalize(headsline []string, data map[string]map[string]interface{}) [][]s
 				log.Printf("%s %T %#v", headline[i], v, *(v.(*[]*cdp.Node)))
 			}
 		}
-		f = append(f, line)
+		if len(line) > 0 {
+			f = append(f, line)
+		}
+
 	}
 	return f
 }

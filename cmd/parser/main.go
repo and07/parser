@@ -6,6 +6,7 @@ import (
 
 	"github.com/and07/parser/pkg/parser"
 	"github.com/spf13/cobra"
+	"go.uber.org/zap"
 )
 
 func main() {
@@ -36,10 +37,18 @@ func main() {
 		log.Printf("ERROR %s", err)
 	}
 
+	logger := zap.NewDevelopmentConfig() // or NewProduction, or NewDevelopment
+	logger.OutputPaths = []string{"stdout"}
+	log, _ := logger.Build()
+
+	// In most circumstances, use the SugaredLogger. It's 4-10x faster than most
+	// other structured logging packages and has a familiar, loosely-typed API.
+	sugar := log.Sugar()
+
 	ctx, cancel := parser.New(context.Background(), parser.WithWriter(path), parser.WithConfigs(rulePath))
 	defer cancel()
 
 	if _, err := parser.Run(ctx); err != nil {
-		log.Printf("ERROR parser.Run %s", err)
+		sugar.Errorf("ERROR parser.Run %s", err)
 	}
 }

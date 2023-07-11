@@ -12,9 +12,6 @@ import (
 
 type Logger interface {
 	// all levels + Prin
-	Print(v ...interface{})
-	Printf(format string, v ...interface{})
-	Println(v ...interface{})
 	Debug(v ...interface{})
 	Debugf(format string, v ...interface{})
 	Debugln(v ...interface{})
@@ -60,10 +57,11 @@ type Parser struct {
 
 // Crawler ...
 type Crawler struct {
-	parser Parser
-	res    chan [][]string
-	logger Logger
-	w      io.Writer
+	parser    Parser
+	headsline []string
+	res       chan [][]string
+	logger    Logger
+	w         io.Writer
 }
 
 type contextKey struct{}
@@ -115,7 +113,7 @@ func WithWriter(outPath string) CrawlerOption {
 func New(ctx context.Context, opts ...CrawlerOption) (context.Context, context.CancelFunc) {
 
 	c := &Crawler{
-		res: make(chan [][]string, 10),
+		res: make(chan [][]string, 100),
 	}
 
 	for _, o := range opts {
@@ -130,6 +128,7 @@ func New(ctx context.Context, opts ...CrawlerOption) (context.Context, context.C
 		go func(cnt int) {
 			for req := range c.res {
 				if err := c.write(req); err != nil {
+					log.Println(err)
 					if c.logger != nil {
 						c.logger.Errorln(err.Error())
 					}
@@ -137,6 +136,11 @@ func New(ctx context.Context, opts ...CrawlerOption) (context.Context, context.C
 			}
 		}(i)
 	}
+
+	headsline := make([]string, 0)
+	head(c.parser.Rule, &headsline)
+	c.headsline = headsline
+
 	ctx = context.WithValue(ctx, contextKey{}, c)
 	// create chrome instance
 	return chromedp.NewContext(
@@ -156,8 +160,7 @@ func Run(ctx context.Context) (context.Context, error) {
 
 	c := FromContext(ctx)
 
-	headsline := make([]string, 0)
-	head(c.parser.Rule, &headsline)
+	c.res <- headliner(c.headsline)
 
 	urlBase := c.parser.URL
 
@@ -166,12 +169,12 @@ func Run(ctx context.Context) (context.Context, error) {
 			data := make(map[string]map[string]interface{})
 			url := fmt.Sprintf(urlBase, i) //TODO
 			if c.logger != nil {
-				c.logger.Printf("url: %s", url)
+				c.logger.Debugf("url: %s", url)
 			}
 			if err := content(ctx, url, c.parser.Rule, data); err != nil {
 				return ctx, err
 			}
-			c.res <- normalize(headsline, data)
+			//c.res <- normalize(c.headsline, data)
 
 		}
 
@@ -183,7 +186,7 @@ func Run(ctx context.Context) (context.Context, error) {
 		return ctx, err
 	}
 
-	c.res <- normalize(headsline, data)
+	//c.res <- normalize(c.headsline, data)
 
 	return ctx, nil
 }
